@@ -134,12 +134,10 @@ class cfFormDB {
         // 総件数を取得
         $total = $this->modx->db->getRecordCount($rs);
         // 最新のファイル出力日を取得
+        $params['latest'] = '';
         if( file_exists($this->touch) ){
-            $latest = '最後のファイル出力は' . date ("Y/m/d H:i:s", filemtime($this->touch)) . 'です。';
-        }else{
-            $latest = 'ファイル出力の記録はありません。';
+            $params['latest'] = '最後のファイル出力は' . date ("Y/m/d H:i:s", filemtime($this->touch)) . 'です。';
         }
-        $params['latest'] = $latest;
 
         // ページ分割
         $count = isset($_GET['ct']) ? intval($_GET['ct']) : 30;
