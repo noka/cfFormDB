@@ -408,6 +408,8 @@ class cfFormDB {
     $size = strlen($output);
     header("Content-Length: {$size}");
     echo $output;
+    //実行日をファイルで記録
+    touch($this->touch);
     exit;
   }
 
