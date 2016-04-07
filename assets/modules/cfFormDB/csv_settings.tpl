@@ -13,7 +13,7 @@ window.addEvent('domready', function() {
 </script>
 <div class="sectionHeader">CSV出力設定</div>
 <div class="sectionBody">
-<p>下記設定を確認し、「出力する」ボタンをクリックしてください</p>
+<p>下記設定を確認し、「出力する」ボタンをクリックしてください。[+latest+]</p>
 <form action="[+posturl+]" method="post" name="csvform" id="mutate">
 <input type="hidden" name="mode" value="csv_generate" />
 <table class="grid" style="margin-bottom: 30px;">
@@ -35,7 +35,7 @@ window.addEvent('domready', function() {
     <tr>
       <th>[+mgrlog_datefr+]</th>
       <td>
-        <input type="text" id="start" name="start" class="DatePicker imeoff" value="" />
+        <input type="text" id="start" name="start" class="DatePicker imeoff" value="[+startdate+]" />
         <a onclick="document.csvform.start.value=''; return true;" style="cursor:pointer; cursor:hand"><img src="media/style/[+theme+]/images/icons/cal_nodate.gif" border="0" alt="No date" /></a>
       </td>
     </tr>

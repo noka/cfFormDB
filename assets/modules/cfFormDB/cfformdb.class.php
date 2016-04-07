@@ -18,6 +18,7 @@ class cfFormDB {
   var $tbl_cfformdb_detail;
   var $ignoreParams;
   var $headLabel;
+  var $touch;
 
   /**
    * コンストラクタ
@@ -54,6 +55,9 @@ class cfFormDB {
             $this->headLabel[$m[1]]=$m[2];
         }
     }
+
+    //簡易的に最終エクスポート日を記録する（隠しファイルのタイムスタンプ利用）
+    $this->touch=$this->modx->config['base_path'] . 'content/files/.cfformdb_fileexport';
 
     include_once $modx->config['base_path'] . 'manager/includes/extenders/maketable.class.php';
   }
@@ -126,9 +130,16 @@ class cfFormDB {
         } else {
           $viewParamsWhere = array();
         }
-        
+
         // 総件数を取得
         $total = $this->modx->db->getRecordCount($rs);
+        // 最新のファイル出力日を取得
+        if( file_exists($this->touch) ){
+            $latest = '最後のファイル出力は' . date ("Y/m/d H:i:s", filemtime($this->touch)) . 'です。';
+        }else{
+            $latest = 'ファイル出力の記録はありません。';
+        }
+        $params['latest'] = $latest;
 
         // ページ分割
         $count = isset($_GET['ct']) ? intval($_GET['ct']) : 30;
@@ -309,6 +320,13 @@ class cfFormDB {
     $params['monthNames']        = "['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']";
     $params['display'] = $this->modx->event->params['sel_csv_fields']==='1' ? '' : 'none';
     
+    // 最後のファイル出力日以降の取得を既定にする
+    $params['startdate'] = '';
+    $params['latest'] = '';
+    if( file_exists($this->touch) ){
+        $params['startdate'] = date ("Y/m/d H:i:s", filemtime($this->touch));
+        $params['latest'] = '既定では前回の出力日<strong>' . $params['startdate'] . '</strong>以降がセットされます。';
+    }
     $this->data['content'] = $this->parser($this->loadTemplate('csv_settings.tpl'), $params);
     $this->data['add_buttons']  = $this->parser('
     <li><a href="[+posturl+]&amp;mode=list=list"><img src="[+icons_refresh+]" /> 一覧表示</a></li>
