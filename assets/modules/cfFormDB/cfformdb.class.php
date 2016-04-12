@@ -59,7 +59,7 @@ class cfFormDB {
     //簡易的に最終エクスポート日を記録する（隠しファイルのタイムスタンプ利用）
     $this->touch=$this->modx->config['base_path'] . 'content/files/.cfformdb_fileexport';
 
-    include_once $modx->config['base_path'] . 'manager/includes/extenders/maketable.class.php';
+    include_once $modx->config['base_path'] . 'manager/includes/extenders/ex_maketable';
   }
 
   /**
