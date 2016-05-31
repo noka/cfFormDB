@@ -20,10 +20,7 @@ class cfFormDB {
   var $headLabel;
   var $touch;
 
-  /**
-   * コンストラクタ
-   */
-  function cfFormDB($modx) {
+  function __construct($modx) {
     global $manager_theme, $_style, $e, $incPath, $content;
 
     $this->modx = &$modx;
@@ -59,7 +56,7 @@ class cfFormDB {
     //簡易的に最終エクスポート日を記録する（隠しファイルのタイムスタンプ利用）
     $this->touch=$this->modx->config['base_path'] . 'content/files/.cfformdb_fileexport';
 
-    include_once $modx->config['base_path'] . 'manager/includes/extenders/ex_maketable';
+    $this->modx->loadExtension(maketable);
   }
 
   /**
