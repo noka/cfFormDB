@@ -60,7 +60,7 @@ class cfFormDB {
     //composer
     $this->lib_autoload=$this->modx->config['base_path'] . 'assets/modules/cfFormDB/vendor/autoload.php';
 
-    $this->modx->loadExtension('maketable');
+    $this->modx->loadExtension('MakeTable');
   }
 
   /**
