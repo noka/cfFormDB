@@ -6,7 +6,7 @@
  * 
  * @author		Clefarray Factory
  * @version	1.0
- * @internal	@properties  &viewFields=一覧画面で表示する項目;text; &ignoreFields=無視する項目;text; &defaultView=デフォルト画面;list;list,csv;list &sel_csv_fields=CSV出力項目を選択;list;1,0;1 &headLabels=表示や出力時のヘッダラベル<br>【書式】name|ラベル,name2|ラベル2,…;textarea;
+ * @internal	@properties &viewFields=一覧画面で表示する項目;text; &ignoreFields=無視する項目;text; &defaultView=デフォルト画面;list;list,csv;list &sel_csv_fields=CSV出力項目を選択;list;1,0;1 &headLabels=表示や出力時のヘッダラベル;textarea
  *
  */  
 class cfFormDB {
@@ -19,6 +19,7 @@ class cfFormDB {
   var $ignoreParams;
   var $headLabel;
   var $touch;
+  var $lib_autoload;
 
   function __construct($modx) {
     global $manager_theme, $_style, $e, $incPath, $content;
@@ -26,11 +27,11 @@ class cfFormDB {
     $this->modx = &$modx;
     $this->e    = &$e;
     
-    $this->tbl_cfformdb        = $this->modx->getFullTableName('cfformdb');
+    $this->tbl_cfformdb = $this->modx->getFullTableName('cfformdb');
     $this->tbl_cfformdb_detail = $this->modx->getFullTableName('cfformdb_detail');
     
-    $this->data['theme']     = '/' . $manager_theme;
-    $this->data['posturl']   = 'index.php?a=112&id=' . $content['id'];
+    $this->data['theme']  = '/' . $manager_theme;
+    $this->data['posturl']  = 'index.php?a=112&id=' . $content['id'];
     $this->data['pagetitle'] = $content['name'] . ' v' .$this->version;
     
     $this->ignoreParams = $this->modx->event->params['ignoreFields'];
@@ -52,6 +53,12 @@ class cfFormDB {
             $this->headLabel[$m[1]]=$m[2];
         }
     }
+
+    //簡易的に最終エクスポート日を記録
+    $this->touch=$this->modx->config['base_path'] . 'content/files/.cfformdb_exportdate';
+    
+    //composer
+    $this->lib_autoload=$this->modx->config['base_path'] . 'assets/modules/cfFormDB/vendor/autoload.php';
 
     $this->modx->loadExtension('maketable');
   }
@@ -81,6 +88,9 @@ class cfFormDB {
         break;
       case "csv_generate":
         $this->generateCSV();
+        break;
+      case "xlsx_generate":
+        $this->generateXLSX();
         break;
       default:
         $this->defaultAction();
@@ -202,7 +212,7 @@ class cfFormDB {
         $this->data['page'] = $page;
         $this->data['count'] = $count;
         $this->data['add_buttons']  = $this->parser('
-        <li><a href="#" onclick="submitAction(\'csv\',\'\');return false;"><img src="[+icons_save+]" /> CSV出力</a></li>
+        <li><a href="#" onclick="submitAction(\'csv\',\'\');return false;"><img src="[+icons_save+]" /> ファイル出力</a></li>
         <li><a href="[+posturl+]"><img src="[+icons_refresh+]" /> 再読み込み</a></li>
         <li><a href="index.php?a=2"><img src="[+icons_cancel+]" /> 閉じる</a></li>
         ', $this->data);
@@ -326,11 +336,155 @@ class cfFormDB {
     ', $this->data);
   }
 
+
+  /**
+   * excel形式で出力
+   * phpexcel
+   */
+  function generateXLSX() {
+      global $content;
+	  
+    include_once($this->lib_autoload);
+	$excel = new PHPExcel();
+
+    // 出力項目を取得
+    if (!count($_POST['fields'])) {
+      echo '<script>alert("出力する項目がありません");location.href="' . $this->data["posturl"] . '";</script>';
+      exit;
+    } else {
+      $fields = array();
+	  $labels = array();
+      foreach ($_POST['fields'] as $val) {
+		$fields[] = "'" . $val . "'";
+		$labels[$val]=$this->getLabel($val);
+      }
+    }
+
+	//エクセル列の添字配列。とりあえずA〜ZZまで。
+	$a = $alphabet = str_split('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+	foreach ($a as $a1) {
+		foreach ($a as $a2) {
+			$alphabet[]= $a1.$a2;
+		}
+	}
+	
+	//Book
+	$excel->getProperties()		->setCreator($content['name'])
+											->setLastModifiedBy($content['name'])
+							 				->setTitle($content['name'])
+											 ->setSubject($content['name']);
+	$excel->setActiveSheetIndex(0);
+
+	//Sheet
+	$sheet = $excel->getActiveSheet();
+	$sheet->setTitle(date('Ymd'));
+	$sheet->getDefaultStyle()->getFont()->setName( 'ＭＳ ゴシック' )->setSize( 11 );
+	
+    // 出力数
+    switch($_POST['count']) {
+      case "30":  $count = 30; break;
+      case "50":  $count = 50; break;
+      case "100": $count = 100; break;
+      default:    $count = 0;
+    }
+
+    // ソート
+    $sort = ($_POST['sort'] ? "main.created DESC" : "main.created ASC");
+
+    // 期間指定 && 
+    $start = !empty($_POST['start']) ? $this->modx->db->escape($_POST['start']) : 0;
+    $end   = !empty($_POST['end'])   ? $this->modx->db->escape($_POST['end'])   : 0;
+	
+	$where = '';
+    if(!empty($start) && !empty($end)){
+        $where = "WHERE main.created BETWEEN '{$start}' AND '{$end}'";
+    }elseif(!empty($start)){
+        $where = "WHERE main.created >= '{$start}'";
+    }elseif(!empty($end)){
+        $where = "WHERE main.created <= '{$end}'";
+    }
+
+    //Where句検索条件に詳細テーブルフィールドが及ぶ場合に備えleftjoinしておく。
+    $sql = sprintf("SELECT DISTINCT main.postid,main.created FROM %s %s ORDER BY %s", $this->tbl_cfformdb .' main LEFT JOIN ' . $this->tbl_cfformdb_detail . ' detail Using(postid)', $where, $sort) . ($count ? ' LIMIT ' . $count : '');
+    $rs = $this->modx->db->query($sql);
+
+	//ヘッダ
+	$header = array_merge(array('ID'), $labels, array('datetime'));
+
+	if(count($alphabet)>count($header)){
+		$colsKey = array_slice($alphabet, 0, count($header));//エクセル列番号を必要数分に揃える
+		$header = array_combine($colsKey, $header); //添字をエクセル列アルファベットに
+	}else{
+      	echo '<script>alert("登録列がZZ列を超えます。超えた分は出力されません");</script>';
+		$colsKey = $alphabet;
+		$header = array_slice($header, 0, count($colsKey));//ヘッダをZZまでで切り取る
+    		$header = array_combine($alphabet, $header); //添字をエクセル列アルファベットに
+	}
+	
+	//ヘッダ書き込み
+	$i=1;
+	foreach($header as $key => $value){
+			$cell=$key.$i;
+			$sheet->setCellValue	($cell,$value);
+	}
+
+	//各行の処理
+    while ($buf = $this->modx->db->getRow($rs)) {
+		$i++;
+		$row=array();
+		$row[]=	$buf['postid'];
+
+		$sql = sprintf("SELECT * FROM %s WHERE postid=%d AND field IN (%s) ORDER BY rank", $this->tbl_cfformdb_detail, $buf['postid'], implode(',', $fields));
+      	$detail_rs = $this->modx->db->query($sql);
+      	$detail = array();
+
+		//各列処理
+        		while ($detail_buf = $this->modx->db->getRow($detail_rs)) {
+			if (in_array($detail_buf['field'], $_POST['fields'])) {
+				if(strpos($detail_buf['value'],'"')!==false){
+					$detail_buf['value'] = str_replace('"','""',$detail_buf['value']);
+                 }
+				$detail[$detail_buf['field']] = $detail_buf['value'];
+			}
+		}
+		foreach ($_POST['fields'] as $field) {
+			$row[]=$detail[$field];
+		}
+
+		$row[]=$buf['created'];
+		$row=array_combine($colsKey, $row);//添字をアルファベットに
+
+		//一行分書き込み
+		foreach($row as $key => $value){
+			$cell=$key.$i;
+			$sheet->setCellValueExplicit($cell,$value);//文字列として書き込み
+		}
+
+    }
+
+    // データ出力
+	$filename= date('YmdHi') . '_' . $content['name'] . '.xlsx';
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename='.$filename);
+	header('Cache-Control: max-age=0');
+	//excel2007
+	$writer = PHPExcel_IOFactory::createWriter($excel, 'Excel2007');
+	$writer->save('php://output');
+
+	//実行日をファイルで記録
+	touch($this->touch);
+
+    //ob_end_clean();バッファクリアすると空ファイルになる。
+    exit;
+  }
+
+
   /**
    * CSV形式で出力
    * 
    */
   function generateCSV() {
+     global $content;
     
     // 出力する項目を取得
     if (!count($_POST['fields'])) {
@@ -370,8 +524,9 @@ class cfFormDB {
     }
     else $where = '';
     // データ出力
+    	$filename= date('YmdHi') . '_' . $content['name'] . '.csv';
     header('Content-type: application/octet-stream');
-    header('Content-Disposition: attachment; filename=cfoutput.csv');
+    header('Content-Disposition: attachment; filename='.$filename);
 
     ob_start();
     $loop = 0;
