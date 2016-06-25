@@ -300,7 +300,16 @@ class cfFormDB {
     }
 
     // 項目一覧を取得
-    $rs = $this->modx->db->select('DISTINCT(field)', $this->tbl_cfformdb_detail, '', 'rank');
+    //取得順序を$this->headLabel指定のある順序とする。
+    $orderby='rank';
+    if(!empty($this->headLabel)){
+        $a1= array_keys($this->headLabel);
+        $a2= array_diff($this->ignoreParams,$a1);
+        $orderkeys=array_merge($a1, $a2);
+        $orderby = "FIELD(field,'". implode("', '",$orderkeys) . "') ASC";
+    }
+    $rs = $this->modx->db->select('DISTINCT(field)', $this->tbl_cfformdb_detail, '', $orderby);
+
     $loop = 0;
     $fields = array();
     $tpl = '<input type="checkbox" name="fields[]" value="%s" id="f_%d" %s /> <label for="f_%d">%s</label>';
@@ -327,7 +336,7 @@ class cfFormDB {
     $params['latest'] = '';
     if( file_exists($this->touch) ){
         $params['startdate'] = date ("Y/m/d H:i:s", filemtime($this->touch));
-        $params['latest'] = '既定では前回の出力日<strong>' . $params['startdate'] . '</strong>以降がセットされます。';
+        $params['latest'] = '<br><span style="color:#f00;">既定では前回の出力日<strong>' . $params['startdate'] . '</strong>以降がセットされます。</span>';
     }
     $this->data['content'] = $this->parser($this->loadTemplate('csv_settings.tpl'), $params);
     $this->data['add_buttons']  = $this->parser('
@@ -352,12 +361,11 @@ class cfFormDB {
       echo '<script>alert("出力する項目がありません");location.href="' . $this->data["posturl"] . '";</script>';
       exit;
     } else {
-      $fields = array();
-	  $labels = array();
-      foreach ($_POST['fields'] as $val) {
-		$fields[] = "'" . $val . "'";
-		$labels[$val]=$this->getLabel($val);
-      }
+          $fields = $_POST['fields'];
+          $labels = array();
+          foreach ($fields as $field) {
+                $labels[$field]=$this->getLabel($field);
+          }
     }
 
 	//エクセル列の添字配列。とりあえずA〜ZZまで。
@@ -434,20 +442,20 @@ class cfFormDB {
 		$row=array();
 		$row[]=	$buf['postid'];
 
-		$sql = sprintf("SELECT * FROM %s WHERE postid=%d AND field IN (%s) ORDER BY rank", $this->tbl_cfformdb_detail, $buf['postid'], implode(',', $fields));
+		$sql = sprintf("SELECT * FROM %s WHERE postid=%d AND field IN (%s) ORDER BY rank", $this->tbl_cfformdb_detail, $buf['postid'], "'".implode("', '", $fields)."'");
       	$detail_rs = $this->modx->db->query($sql);
       	$detail = array();
 
 		//各列処理
-        		while ($detail_buf = $this->modx->db->getRow($detail_rs)) {
-			if (in_array($detail_buf['field'], $_POST['fields'])) {
+        	while ($detail_buf = $this->modx->db->getRow($detail_rs)) {
+			if (in_array($detail_buf['field'], $fields)) {
 				if(strpos($detail_buf['value'],'"')!==false){
 					$detail_buf['value'] = str_replace('"','""',$detail_buf['value']);
                  }
 				$detail[$detail_buf['field']] = $detail_buf['value'];
 			}
 		}
-		foreach ($_POST['fields'] as $field) {
+		foreach ($fields as $field) {
 			$row[]=$detail[$field];
 		}
 
@@ -486,18 +494,19 @@ class cfFormDB {
   function generateCSV() {
      global $content;
     
-    // 出力する項目を取得
+
+    // 出力項目を取得
     if (!count($_POST['fields'])) {
       echo '<script>alert("出力する項目がありません");location.href="' . $this->data["posturl"] . '";</script>';
       exit;
     } else {
-      $fields = array();
-      $labels = array();
-      foreach ($_POST['fields'] as $val) {
-        $fields[] = "'" . $val . "'";
-        $labels[$val]=$this->getLabel($val);
-      }
+          $fields = $_POST['fields'];
+          $labels = array();
+          foreach ($fields as $field) {
+                $labels[$field]=$this->getLabel($field);
+          }
     }
+
     // 出力数
     switch($_POST['count']) {
       case "30":  $count = 30; break;
@@ -529,13 +538,13 @@ class cfFormDB {
     header('Content-Disposition: attachment; filename='.$filename);
 
     ob_start();
-    $loop = 0;
     $sql = sprintf("SELECT postid,created FROM %s %s ORDER BY %s", $this->tbl_cfformdb, $where, $sort) . ($count ? ' LIMIT ' . $count : '');
     $rs = $this->modx->db->query($sql);
     echo '//' . implode(',', array_merge(array('ID'), array_values($labels), array('datetime'))) . "\n";
+
     while ($buf = $this->modx->db->getRow($rs)) {
-      echo $buf['postid'] . ',';
-      $sql = sprintf("SELECT * FROM %s WHERE postid=%d AND field IN (%s) ORDER BY rank", $this->tbl_cfformdb_detail, $buf['postid'], implode(',', $fields));
+      echo $buf['postid'] . ','; //#1
+	  $sql = sprintf("SELECT * FROM %s WHERE postid=%d AND field IN (%s) ORDER BY rank", $this->tbl_cfformdb_detail, $buf['postid'], "'".implode("', '", $fields)."'");
       $detail_rs = $this->modx->db->query($sql);
       $detail = array();
       while ($detail_buf = $this->modx->db->getRow($detail_rs)) {
@@ -545,11 +554,10 @@ class cfFormDB {
             $detail[$detail_buf['field']] = $detail_buf['value'];
         }
       }
-      foreach ($_POST['fields'] as $field) {
+      foreach ($fields as $field) {
         echo '"' . $detail[$field] . '",';
       }
       echo '"'.$buf['created'].'"' . "\n";
-      $loop++;
     }
     $output = ob_get_flush();
     ob_end_clean();
