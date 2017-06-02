@@ -6,7 +6,7 @@
  * 
  * @author		Clefarray Factory
  * @version	1.0
- * @internal	@properties &viewFields=一覧画面で表示する項目;text; &ignoreFields=無視する項目;text; &defaultView=デフォルト画面;list;list,csv;list &sel_csv_fields=CSV出力項目を選択;list;1,0;1 &headLabels=表示や出力時のヘッダラベル;textarea
+ * @internal	@properties &tableName=記録先のメインテーブル名;text;cfformdb &composer=where is autoload.php?;text;assets/modules/cfFormDB/vendor/autoload.php &viewFields=一覧画面で表示する項目;text; &ignoreFields=無視する項目;text; &defaultView=デフォルト画面;list;list,csv;list &sel_csv_fields=CSV出力項目を選択;list;1,0;1 &headLabels=表示や出力時のヘッダラベル;textarea
  *
  */  
 class cfFormDB {
@@ -14,6 +14,7 @@ class cfFormDB {
   var $modx;
   var $data;
   var $version = '1.0';
+  var $tbl_basename;
   var $tbl_cfformdb;
   var $tbl_cfformdb_detail;
   var $ignoreParams;
@@ -27,8 +28,14 @@ class cfFormDB {
     $this->modx = &$modx;
     $this->e    = &$e;
     
-    $this->tbl_cfformdb = $this->modx->getFullTableName('cfformdb');
-    $this->tbl_cfformdb_detail = $this->modx->getFullTableName('cfformdb_detail');
+    /* get tablename */
+    if(!empty($this->modx->event->params['tableName'])){
+      $this->tbl_basename = $this->modx->event->params['tableName'];  
+    }else{
+      $this->tbl_basename = 'cfformdb';
+    }
+    $this->tbl_cfformdb = $this->modx->getFullTableName($this->tbl_basename);
+    $this->tbl_cfformdb_detail = $this->modx->getFullTableName($this->tbl_basename.'_detail');
     
     $this->data['theme']  = '/' . $manager_theme;
     $this->data['posturl']  = 'index.php?a=112&id=' . $content['id'];
@@ -54,12 +61,17 @@ class cfFormDB {
         }
     }
 
-    //簡易的に最終エクスポート日を記録
-    $this->touch=$this->modx->config['base_path'] . 'content/files/.cfformdb_exportdate';
+    //簡易的にファイルタイムスタンプで最終エクスポート日を記録
+    $this->touch=$this->modx->config['base_path'] . 'content/files/.' . $this->tbl_basename . '_exportdate';
     
-    //composer
-    $this->lib_autoload=$this->modx->config['base_path'] . 'assets/modules/cfFormDB/vendor/autoload.php';
-
+    //where is composer ?
+    if($this->modx->event->params['composer']){
+      $autoload = ltrim($this->modx->event->params['composer'],'/');
+    }else{
+      $autoload = 'assets/modules/cfFormDB/vendor/autoload.php';
+    }
+       
+    $this->lib_autoload=$this->modx->config['base_path'] . $autoload;
     $this->modx->loadExtension('MakeTable');
   }
 
@@ -579,15 +591,20 @@ class cfFormDB {
     } else {
       $flag = false;
       $this->modx->db->query('START TRANSACTION');
+      $char_collate = '';
+      /*--サーバーのデフォルトに合わせるか，以下で指定するか
+      $char=$this->modx->db->charset;
+      $collation=$this->modx->db->getCollation();
       if(version_compare($this->modx->db->getVersion(),'4.1.0', '>='))
       {
-          $char_collate = ' DEFAULT CHARSET=utf8 COLLATE utf8_general_ci';
+          $char_collate = ' DEFAULT CHARSET=' . $char . ' COLLATE ' . $collation;
       }
       else $char_collate = '';
+      */
       $sql = "CREATE TABLE {$this->tbl_cfformdb} (`postid` int auto_increment primary key, `created` datetime) ENGINE=MyISAM";
       $this->modx->db->query($sql.$char_collate);
       if (!($err = $this->modx->db->getLastError())) {
-        $sql = "CREATE TABLE {$this->tbl_cfformdb_detail} (`postid` int not null, `field` varchar(255) not null, `value` text, `rank` int, PRIMARY KEY ( `postid` , `field` )) ENGINE=MyISAM";
+        $sql = "CREATE TABLE {$this->tbl_cfformdb_detail} (`postid` int not null, `field` varchar(249) not null, `value` text, `rank` int, PRIMARY KEY ( `postid` , `field` )) ENGINE=MyISAM";
         $this->modx->db->query($sql.$char_collate);
         if (!($err2 = $this->modx->db->getLastError())) {
           $this->modx->db->query('COMMIT');
@@ -616,7 +633,7 @@ class cfFormDB {
    * テーブルの存在確認
    */
   function ifTableExists() {
-    $sql = "SHOW TABLES FROM " . $this->modx->db->config['dbase'] . " LIKE '%cfformdb%'";
+    $sql = "SHOW TABLES FROM `" . $this->modx->db->config['dbase'] . "` LIKE '%". $this->tbl_basename . "%'";
     if ($rs = $this->modx->db->query($sql)) {
       if ($this->modx->db->getRecordCount($rs) == 2) {
         return true;
